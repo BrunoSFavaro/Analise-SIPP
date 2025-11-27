@@ -1,4 +1,5 @@
 {
-    "duracao_chamada": 30,
-    "limite_superior": 4180
+    "IGNORAR_INICIAIS": 30,
+    "IGNORAR_FINAIS": 30,
+    "LIMITE_SUPERIOR": 4180
 }
