@@ -44,7 +44,7 @@ Aplicação em **Streamlit** para análise automática de logs gerados em testes
     └── ambiente_B_stats_312443/
 ```
 
-    ---
+---
 
 ## ⚙️ Configuração (JSON)
 
