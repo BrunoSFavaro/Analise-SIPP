@@ -161,8 +161,12 @@ if arquivo_csv:
             else:
                 c_alerta1.success("✅ Estabilidade mantida após pico")
                 
-            if stats["falha_idx"] is not None:
-                c_alerta2.warning(f"⚠️ Primeira falha registrada na linha {stats['falha_idx']}")
+            # Correção: Verifica se há QUALQUER falha, independente de ter índice ou não
+            if stats['total_falhas'] > 0:
+                msg_falha = f"⚠️ {stats['total_falhas']} falha(s) registrada(s)."
+                if stats.get("falha_idx") is not None:
+                    msg_falha += f" Primeira ocorrência na linha {stats['falha_idx']}."
+                c_alerta2.warning(msg_falha)
             else:
                 c_alerta2.success("✅ Sem falhas registradas")
 
