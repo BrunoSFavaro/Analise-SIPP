@@ -3,101 +3,188 @@ import json
 import glob
 import os
 import difflib
+import pandas as pd
+from typing import Optional, Tuple, List
 
+# Importação dos módulos internos (assumindo que existam)
 from analisador.processamento import processar_csv
 from analisador.graficos import gerar_grafico
 
-st.set_page_config(layout="wide")
-st.title("Analisador SIPp — Auto-detect ambiente")
+# 1. Configuração da página deve ser SEMPRE a primeira linha
+st.set_page_config(
+    page_title="Analisador SIPp",
+    page_icon="🔥",
+    layout="wide"
+)
 
-# lista os JSONs de configuração
+st.title("🔥 Analisador SIPp — Auto-detect ambiente")
+
+# --- CONSTANTES E SETUP ---
 AMBIENTES_DIR = "ambientes"
-json_paths = sorted(glob.glob(os.path.join(AMBIENTES_DIR, "*.json")))
 
-def listar_ambientes():
+# 2. Caching para evitar recarregar a lista de arquivos toda hora
+@st.cache_data
+def listar_ambientes() -> List[Tuple[str, str]]:
+    """Lista os arquivos JSON disponíveis no diretório de ambientes."""
+    pattern = os.path.join(AMBIENTES_DIR, "*.json")
+    paths = sorted(glob.glob(pattern))
     envs = []
-    for p in json_paths:
+    for p in paths:
+        # Extrai apenas o nome do arquivo sem extensão para exibição
         base = os.path.splitext(os.path.basename(p))[0]
         envs.append((base, p))
     return envs
 
+# 3. Caching pesado no processamento do CSV
+# Isso faz com que, se o usuário mudar de aba ou configuração,
+# o pandas não precise ler o CSV gigante novamente.
+@st.cache_data(show_spinner="Processando CSV...")
+def carregar_dados_processados(file, config_dict):
+    """Wrapper para cachear o resultado do processamento."""
+    # Como o file é um buffer, precisamos garantir que está no início
+    file.seek(0) 
+    return processar_csv(file, config_dict)
+
+def detectar_ambiente_por_nome(filename: str, ambientes_list: list) -> Optional[str]:
+    """Tenta adivinhar o ambiente baseado no nome do arquivo."""
+    if not filename:
+        return None
+    
+    filename_clean = filename.lower()
+    
+    # 1. Tentativa exata (substring)
+    for nome, path in ambientes_list:
+        if nome.lower() in filename_clean:
+            return path
+            
+    # 2. Tentativa difusa (fuzzy match)
+    candidatos = [nome for nome, _ in ambientes_list]
+    # cutoff=0.6 requer 60% de similaridade
+    matches = difflib.get_close_matches(
+        os.path.splitext(os.path.basename(filename))[0], 
+        candidatos, 
+        n=1, 
+        cutoff=0.6
+    )
+    
+    if matches:
+        match_name = matches[0]
+        for nome, path in ambientes_list:
+            if nome == match_name:
+                return path
+                
+    return None
+
+# --- INÍCIO DA LÓGICA DE UI ---
+
 ambientes = listar_ambientes()
 
 if not ambientes:
-    st.error(f"Nenhum JSON de ambiente encontrado em '{AMBIENTES_DIR}'. Crie arquivos .json com as configurações.")
+    st.error(f"❌ Nenhum JSON encontrado em '{AMBIENTES_DIR}'.")
     st.stop()
 
-# uploader
-arquivo_csv = st.file_uploader("Selecione o CSV de estatísticas (stats_*.csv) ou arraste-o aqui", type=["csv", "txt"])
+# Sidebar para inputs (deixa o gráfico com mais espaço)
+with st.sidebar:
+    st.header("📂 Entrada de Dados")
+    arquivo_csv = st.file_uploader("Arquivo de Logs (stats_*.csv)", type=["csv", "txt"])
 
-# função que tenta detectar ambiente a partir do nome do arquivo
-def detectar_ambiente_por_nome(filename):
-    if not filename:
-        return None
-    # tenta correspondência direta (substring)
-    for nome, path in ambientes:
-        if nome.lower() in filename.lower():
-            return path
-    # tenta correspondência por similaridade do nome
-    candidatos = [nome for nome, _ in ambientes]
-    best = difflib.get_close_matches(os.path.splitext(os.path.basename(filename))[0], candidatos, n=1, cutoff=0.6)
-    if best:
-        sel = best[0]
-        for nome, path in ambientes:
-            if nome == sel:
-                return path
-    return None
-
-config = None
-config_path = None
-
-if arquivo_csv is not None:
-    # nome do arquivo enviado
-    upload_name = getattr(arquivo_csv, "name", None)
-    config_path = detectar_ambiente_por_nome(upload_name)
-
-    if config_path:
-        with open(config_path, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        st.info(f"Ambiente detectado automaticamente: **{os.path.splitext(os.path.basename(config_path))[0]}**")
-    else:
-        st.warning("Não foi possível detectar automaticamente o ambiente a partir do nome do CSV.")
-        escolhas = [nome for nome, _ in ambientes]
-        escolha = st.selectbox("Selecione o ambiente (fallback)", escolhas)
-        # encontra o path do escolhido
-        for nome, path in ambientes:
-            if nome == escolha:
-                config_path = path
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
+if arquivo_csv:
+    # Lógica de detecção do ambiente
+    config_path_detectado = detectar_ambiente_por_nome(arquivo_csv.name, ambientes)
+    
+    # Define o índice padrão para o selectbox
+    index_padrao = 0
+    msg_detect = None
+    
+    if config_path_detectado:
+        # Encontra o índice do path detectado na lista de tuplas
+        for i, (_, path) in enumerate(ambientes):
+            if path == config_path_detectado:
+                index_padrao = i
+                msg_detect = f"✅ Detectado: **{ambientes[i][0]}**"
                 break
+    
+    # Selectbox inteligente: já vem selecionado se detectou, mas permite troca
+    with st.sidebar:
+        st.write("---")
+        st.subheader("⚙️ Configuração")
+        
+        if msg_detect:
+            st.markdown(msg_detect)
+        else:
+            st.warning("⚠️ Ambiente não detectado automaticamente.")
+            
+        escolha_nome, escolha_path = st.selectbox(
+            "Ambiente Selecionado:", 
+            ambientes, 
+            index=index_padrao,
+            format_func=lambda x: x[0] # Mostra só o nome, mas retorna a tupla
+        )
 
-    # processa CSV e gera gráfico
+    # Carregamento do JSON (Unificado)
     try:
-        df = processar_csv(arquivo_csv, config)
+        with open(escolha_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
     except Exception as e:
+        st.error(f"Erro ao ler JSON de configuração: {e}")
+        st.stop()
+
+    # --- PROCESSAMENTO E EXIBIÇÃO ---
+    
+    try:
+        # Chama a função cacheada
+        df = carregar_dados_processados(arquivo_csv, config)
+    except Exception as e:
+        st.error("Erro ao processar CSV.")
         st.exception(e)
         st.stop()
 
+    # Dashboard de Métricas (Visualização em Colunas)
     try:
         fig, stats = gerar_grafico(df, config)
+        
+        st.markdown("### 📊 Dashboard de Performance")
+        
+        # Linha 1 de métricas
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Pico de Chamadas", stats['pico'])
+        col2.metric("Média (Estável)", f"{stats['media']:.1f}")
+        col3.metric("Max CallRate", f"{stats['callrate_max']:.1f}")
+        col4.metric("Falhas Totais", stats['total_falhas'], delta_color="inverse")
+
+        # Linha 2 de alertas (usando container para destaque)
+        with st.container():
+            c_alerta1, c_alerta2 = st.columns(2)
+            
+            if stats["queda_idx"] is not None:
+                c_alerta1.error(f"⚠️ Queda Brusca detectada na linha {stats['queda_idx']}")
+            else:
+                c_alerta1.success("✅ Estabilidade mantida após pico")
+                
+            if stats["falha_idx"] is not None:
+                c_alerta2.warning(f"⚠️ Primeira falha registrada na linha {stats['falha_idx']}")
+            else:
+                c_alerta2.success("✅ Sem falhas registradas")
+
+        st.divider()
+        
+        # Exibição do Gráfico
+        st.pyplot(fig) # Remove dpi=120 se o matplotlib já estiver configurado, ou mantém se ficar pequeno.
+
     except Exception as e:
+        st.error("Erro na geração de gráficos/métricas.")
         st.exception(e)
-        st.stop()
 
-    st.pyplot(fig, dpi=120)
-
-    st.subheader("Estatísticas do teste")
-    st.write(f"📌 Pico de chamadas simultâneas: **{stats['pico']}**")
-    st.write(f"📊 Média de chamadas simultâneas (ignorando ramp-up/down): **{stats['media']:.1f}**")
-    st.write(f"🚀 Máxima taxa de chamadas (CallRate): **{stats['callrate_max']:.1f}**")
-    st.write(f"📈 Taxa média de chamadas: **{stats['callrate_media']:.1f}**")
-    st.write(f"❌ Falhas acumuladas: **{stats['total_falhas']}**")
-
-    if stats["queda_idx"] is not None:
-        st.error(f"⚠️ Queda detectada após o pico — posição: {stats['queda_idx']}")
-    else:
-        st.success("Nenhuma queda detectada após o pico.")
-
-    if stats["falha_idx"] is not None:
-        st.warning(f"⚠️ Primeira falha detectada em: {stats['falha_idx']}")
+else:
+    # State zero (quando não tem arquivo)
+    st.info("👆 Faça o upload de um arquivo CSV na barra lateral para começar.")
+    
+    # Mostra um exemplo do que esperar
+    st.markdown("""
+    ### Formato esperado:
+    O sistema espera arquivos padrão do **SIPp** contendo colunas como:
+    - `CurrentTime`
+    - `CurrentCall`
+    - `CallRate(P)`
+    - `FailedCall(C)`
+    """)
