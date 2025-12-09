@@ -12,11 +12,10 @@ from analisador.graficos import gerar_grafico, plotar_comparacao
 # 1. Configuração da página
 st.set_page_config(
     page_title="Analisador SIPp",
-    page_icon="🔥",
     layout="wide"
 )
 
-st.title("🔥 Analisador SIPp — Multi-Agent Support")
+st.title("Analisador SIPp")
 
 # --- CONSTANTES E SETUP ---
 AMBIENTES_DIR = "ambientes"
@@ -144,7 +143,7 @@ if modo_operacao == "Individual":
         except Exception as e:
             st.error(f"Erro ao processar: {e}")
     else:
-        st.info("👆 Faça o upload de um arquivo para iniciar.")
+        st.info("Faça o upload de um arquivo para iniciar.")
 
 # ==========================================
 # MODO COMPARAÇÃO (NOVO)
@@ -158,7 +157,7 @@ else:
         f_b = st.file_uploader("Lado B", type=["csv", "txt"], key="fb")
         
         st.divider()
-        st.subheader("⚙️ Configurações (Apenas Informativo)")
+        st.subheader("⚙️ Configurações Individuais")
 
     if f_a and f_b:
         # Detecção Automática para A
@@ -183,37 +182,73 @@ else:
             )
 
         try:
-            # Carregamos apenas para exibir o nome, já que o gráfico comparativo é Raw Data
-            # Isso evita que um JSON corrompido quebre o carregamento do CSV
-            pass 
+            # Carrega Config A
+            with open(path_a, "r", encoding="utf-8") as fa_json:
+                config_a = json.load(fa_json)
+            
+            # Carrega Config B
+            with open(path_b, "r", encoding="utf-8") as fb_json:
+                config_b = json.load(fb_json)
         except Exception as e:
-            st.error(f"Erro: {e}")
+            st.error(f"Erro ao carregar arquivos JSON: {e}")
+            st.stop()
             
         try:
             # Processa cada um de forma INDEPENDENTE da configuração
             df_a = carregar_dados_processados(f_a)
             df_b = carregar_dados_processados(f_b)
             
+            # --- CÁLCULO DE ESTATÍSTICAS COMPLETAS ---
+            # Reutilizamos a função gerar_grafico para obter o dict 'stats' completo
+            # Ignoramos a figura ('_') pois só queremos os números agora
+            _, stats_a = gerar_grafico(df_a, config_a)
+            _, stats_b = gerar_grafico(df_b, config_b)
+            
             # Chama a função plotar_comparacao
             fig_comp = plotar_comparacao(df_a, f_a.name, df_b, f_b.name)
             
             st.pyplot(fig_comp)
             
-            # Resumo rápido em colunas
+            # --- RESUMO DETALHADO EM COLUNAS ---
             st.divider()
             col_a, col_b = st.columns(2)
             
+            # Coluna A
             with col_a:
-                pico_a = df_a['CurrentCall'].max() if not df_a.empty else 0
-                st.info(f"📁 **{f_a.name}**")
-                st.caption(f"Ambiente detectado: {nome_a}")
-                st.metric("Pico A", int(pico_a))
+                st.info(f"📁 **Lado A: {f_a.name}**")
+                st.caption(f"Config: {nome_a}")
+                
+                # Layout interno de métricas
+                c1, c2 = st.columns(2)
+                c1.metric("Pico", stats_a['pico'])
+                c2.metric("Média", f"{stats_a['media']:.1f}")
+                
+                c3, c4 = st.columns(2)
+                c3.metric("Max CallRate", f"{stats_a['callrate_max']:.1f}")
+                c4.metric("Falhas", stats_a['total_falhas'], delta_color="inverse")
 
+            # Coluna B
             with col_b:
-                pico_b = df_b['CurrentCall'].max() if not df_b.empty else 0
-                st.info(f"📁 **{f_b.name}**")
-                st.caption(f"Ambiente detectado: {nome_b}")
-                st.metric("Pico B", int(pico_b))
+                st.info(f"📁 **Lado B: {f_b.name}**")
+                st.caption(f"Config: {nome_b}")
+                
+                c1, c2 = st.columns(2)
+                c1.metric("Pico", stats_b['pico'])
+                c2.metric("Média", f"{stats_b['media']:.1f}")
+                
+                c3, c4 = st.columns(2)
+                c3.metric("Max CallRate", f"{stats_b['callrate_max']:.1f}")
+                c4.metric("Falhas", stats_b['total_falhas'], delta_color="inverse")
+            
+            # --- CONSOLIDADO (SOMA) ---
+            st.divider()
+            total_pico_est = stats_a['pico'] + stats_b['pico']
+            total_falhas = stats_a['total_falhas'] + stats_b['total_falhas']
+            
+            st.markdown("### Σ Consolidado (A + B)")
+            k1, k2 = st.columns(2)
+            k1.metric("Soma dos Picos", total_pico_est, help="Soma simples dos picos individuais")
+            k2.metric("Total de Falhas", total_falhas, delta_color="inverse")
             
         except Exception as e:
             st.error(f"Erro na comparação: {e}")
