@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Analisador SIPp")
+st.title("Analisador SIPp — Multi-Agent Support")
 
 # --- CONSTANTES E SETUP ---
 AMBIENTES_DIR = "ambientes"
@@ -37,12 +37,9 @@ def listar_ambientes() -> List[Tuple[str, str]]:
 def carregar_dados_processados(file):
     """
     Wrapper para cachear o processamento do CSV.
-    REMOVIDO: Dependência de 'config_dict', pois a limpeza bruta independe do ambiente.
     """
     if file is None: return None
-    # Garante que o ponteiro do arquivo esteja no início antes de ler
     file.seek(0) 
-    # Passamos dict vazio {} pois processar_csv exige o argumento mas não usa para limpeza bruta
     return processar_csv(file, {})
 
 def detectar_ambiente_por_nome(filename: str, ambientes_list: list) -> Optional[str]:
@@ -50,11 +47,9 @@ def detectar_ambiente_por_nome(filename: str, ambientes_list: list) -> Optional[
     if not filename: return None
     clean_name = filename.lower()
     
-    # 1. Match exato
     for nome, path in ambientes_list:
         if nome.lower() in clean_name: return path
             
-    # 2. Match aproximado
     candidatos = [nome for nome, _ in ambientes_list]
     matches = difflib.get_close_matches(
         os.path.splitext(os.path.basename(filename))[0], 
@@ -96,7 +91,6 @@ if modo_operacao == "Individual":
         arquivo_csv = st.file_uploader("Upload CSV", type=["csv", "txt"], key="single")
 
     if arquivo_csv:
-        # Detecção de Ambiente
         config_path = detectar_ambiente_por_nome(arquivo_csv.name, ambientes)
         idx_padrao = obter_indice_ambiente(config_path, ambientes)
         
@@ -110,7 +104,6 @@ if modo_operacao == "Individual":
                 "Confirmar Ambiente:", ambientes, index=idx_padrao, format_func=lambda x: x[0]
             )
 
-        # Carregar Config
         try:
             with open(escolha_path, "r", encoding="utf-8") as f: 
                 config = json.load(f)
@@ -119,26 +112,22 @@ if modo_operacao == "Individual":
             st.stop()
         
         try:
-            # Processa o CSV (sem depender da config)
             df = carregar_dados_processados(arquivo_csv)
-            # Gera gráficos (aplicando a config apenas aqui)
             fig, stats = gerar_grafico(df, config)
             
-            # Exibição
             st.markdown(f"### 📊 Análise: {arquivo_csv.name}")
             
-            # Métricas em Cards
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Pico de Chamadas", stats['pico'])
             c2.metric("Média Estável", f"{stats['media']:.1f}")
             c3.metric("Max CallRate", f"{stats['callrate_max']:.1f}")
             c4.metric("Falhas Totais", stats['total_falhas'], delta_color="inverse")
             
-            # Alertas
             if stats['total_falhas'] > 0:
                 st.warning(f"⚠️ Atenção: {stats['total_falhas']} falhas detectadas.")
             
-            st.pyplot(fig)
+            # --- MUDANÇA PARA PLOTLY ---
+            st.plotly_chart(fig, use_container_width=True)
             
         except Exception as e:
             st.error(f"Erro ao processar: {e}")
@@ -160,33 +149,26 @@ else:
         st.subheader("⚙️ Configurações Individuais")
 
     if f_a and f_b:
-        # Detecção Automática para A
         path_a_detect = detectar_ambiente_por_nome(f_a.name, ambientes)
         idx_a = obter_indice_ambiente(path_a_detect, ambientes)
         
-        # Detecção Automática para B
         path_b_detect = detectar_ambiente_por_nome(f_b.name, ambientes)
         idx_b = obter_indice_ambiente(path_b_detect, ambientes)
 
         with st.sidebar:
-            # Seletor A
             st.markdown(f"**Ambiente A** ({f_a.name})")
             nome_a, path_a = st.selectbox(
                 "Config A:", ambientes, index=idx_a, format_func=lambda x: x[0], key="sel_a"
             )
             
-            # Seletor B
             st.markdown(f"**Ambiente B** ({f_b.name})")
             nome_b, path_b = st.selectbox(
                 "Config B:", ambientes, index=idx_b, format_func=lambda x: x[0], key="sel_b"
             )
 
         try:
-            # Carrega Config A
             with open(path_a, "r", encoding="utf-8") as fa_json:
                 config_a = json.load(fa_json)
-            
-            # Carrega Config B
             with open(path_b, "r", encoding="utf-8") as fb_json:
                 config_b = json.load(fb_json)
         except Exception as e:
@@ -194,60 +176,47 @@ else:
             st.stop()
             
         try:
-            # Processa cada um de forma INDEPENDENTE da configuração
             df_a = carregar_dados_processados(f_a)
             df_b = carregar_dados_processados(f_b)
             
-            # --- CÁLCULO DE ESTATÍSTICAS COMPLETAS ---
-            # Reutilizamos a função gerar_grafico para obter o dict 'stats' completo
-            # Ignoramos a figura ('_') pois só queremos os números agora
             _, stats_a = gerar_grafico(df_a, config_a)
             _, stats_b = gerar_grafico(df_b, config_b)
             
-            # Chama a função plotar_comparacao
             fig_comp = plotar_comparacao(df_a, f_a.name, df_b, f_b.name)
             
-            st.pyplot(fig_comp)
+            # --- MUDANÇA PARA PLOTLY ---
+            st.plotly_chart(fig_comp, use_container_width=True)
             
-            # --- RESUMO DETALHADO EM COLUNAS ---
             st.divider()
             col_a, col_b = st.columns(2)
             
-            # Coluna A
             with col_a:
                 st.info(f"📁 **Lado A: {f_a.name}**")
                 st.caption(f"Config: {nome_a}")
-                
-                # Layout interno de métricas
                 c1, c2 = st.columns(2)
                 c1.metric("Pico", stats_a['pico'])
                 c2.metric("Média", f"{stats_a['media']:.1f}")
-                
                 c3, c4 = st.columns(2)
                 c3.metric("Max CallRate", f"{stats_a['callrate_max']:.1f}")
                 c4.metric("Falhas", stats_a['total_falhas'], delta_color="inverse")
 
-            # Coluna B
             with col_b:
                 st.info(f"📁 **Lado B: {f_b.name}**")
                 st.caption(f"Config: {nome_b}")
-                
                 c1, c2 = st.columns(2)
                 c1.metric("Pico", stats_b['pico'])
                 c2.metric("Média", f"{stats_b['media']:.1f}")
-                
                 c3, c4 = st.columns(2)
                 c3.metric("Max CallRate", f"{stats_b['callrate_max']:.1f}")
                 c4.metric("Falhas", stats_b['total_falhas'], delta_color="inverse")
             
-            # --- CONSOLIDADO (SOMA) ---
             st.divider()
             total_pico_est = stats_a['pico'] + stats_b['pico']
             total_falhas = stats_a['total_falhas'] + stats_b['total_falhas']
             
             st.markdown("### Σ Consolidado (A + B)")
             k1, k2 = st.columns(2)
-            k1.metric("Soma dos Picos", total_pico_est, help="Soma simples dos picos individuais")
+            k1.metric("Soma dos Picos", total_pico_est)
             k2.metric("Total de Falhas", total_falhas, delta_color="inverse")
             
         except Exception as e:

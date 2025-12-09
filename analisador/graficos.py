@@ -1,13 +1,13 @@
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 def gerar_grafico(df, config=None):
     """
-    Gera figura matplotlib e um dict com estatísticas (Modo Individual).
+    Gera gráfico interativo Plotly e um dict com estatísticas (Modo Individual).
     """
-    # Configurações com valores padrão seguros
+    # --- 1. PREPARAÇÃO DOS DADOS ---
     LIMIAR_QUEDA = config.get("LIMIAR_QUEDA", 0.995) if config else 0.995
     IGNORAR_INICIAIS = int(config.get("IGNORAR_INICIAIS", 200)) if config else 200
     IGNORAR_FINAIS = int(config.get("IGNORAR_FINAIS", 200)) if config else 200
@@ -60,114 +60,162 @@ def gerar_grafico(df, config=None):
         "limite_superior": LIMITE_SUPERIOR,
     }
 
-    fig, ax1 = plt.subplots(figsize=(13, 7))
-    ax2 = ax1.twinx()
+    # --- 2. PLOTAGEM INTERATIVA COM PLOTLY ---
+    
+    # Cria figura com eixo Y secundário (para Falhas)
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
 
-    ax1.plot(t, current, label='Chamadas Ativas', linewidth=2, color='#1f77b4')
-    ax1.plot(t, callrate, label='CallRate', alpha=0.5, color='#2ca02c')
-    ax2.plot(t, failed, label='Falhas', linestyle='--', alpha=0.8, color='#d62728')
+    # Linha Principal: Chamadas Ativas (Azul)
+    fig.add_trace(
+        go.Scatter(
+            x=t, y=current, name="Chamadas Ativas", 
+            line=dict(color='#1f77b4', width=2),
+            hovertemplate="%{y} chamadas<extra></extra>"
+        ),
+        secondary_y=False
+    )
 
-    ax1.axvline(pico_idx, color='green', linestyle='--', alpha=0.5, label='Pico')
-    if queda_idx: ax1.axvline(queda_idx, color='red', linestyle='--', alpha=0.5, label='Queda')
+    # Linha: CallRate (Verde)
+    fig.add_trace(
+        go.Scatter(
+            x=t, y=callrate, name="CallRate", 
+            line=dict(color='#2ca02c', width=1), opacity=0.6,
+            hovertemplate="%{y} cps<extra></extra>"
+        ),
+        secondary_y=False
+    )
+
+    # Linha: Falhas (Vermelho) - Eixo Secundário
+    fig.add_trace(
+        go.Scatter(
+            x=t, y=failed, name="Falhas", 
+            line=dict(color='#d62728', width=2, dash='dash'),
+            hovertemplate="%{y} falhas<extra></extra>"
+        ),
+        secondary_y=True
+    )
+
+    # Marcadores Verticais (Pico, Queda, Limite)
+    # Pico (Verde)
+    fig.add_vline(x=pico_idx, line_width=1, line_dash="dash", line_color="green", annotation_text="Pico", annotation_position="top left")
     
-    ax1.axhline(LIMITE_SUPERIOR, color='purple', linestyle=':', label=f'Limite {LIMITE_SUPERIOR}')
+    # Queda (Vermelho)
+    if queda_idx:
+        fig.add_vline(x=queda_idx, line_width=1, line_dash="dash", line_color="red", annotation_text="Queda", annotation_position="bottom right")
+
+    # Limite Superior (Roxo)
+    fig.add_hline(y=LIMITE_SUPERIOR, line_width=1, line_dash="dot", line_color="purple", annotation_text=f"Limite {LIMITE_SUPERIOR}")
+
+    # Layout
+    fig.update_layout(
+        title="Análise SIPp Interativa",
+        xaxis_title="Tempo (segundos)",
+        hovermode="x unified", # Tooltip mostra todos os valores daquele segundo juntos
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
     
-    ax1.set_xlabel('Tempo (segundos)')
-    ax1.set_ylabel('Volume')
-    ax2.set_ylabel('Falhas')
-    
-    fig.suptitle('Análise SIPp (Individual)')
-    fig.legend(loc='upper left', bbox_to_anchor=(0.1, 0.9))
-    fig.tight_layout()
+    fig.update_xaxes(hoverformat=".1f") # Formata o tempo no tooltip
+    fig.update_yaxes(title_text="Volume (Chamadas/Taxa)", secondary_y=False)
+    fig.update_yaxes(title_text="Total Falhas", secondary_y=True)
 
     return fig, stats
 
 def plotar_comparacao(df1, name1, df2, name2):
     """
-    Gera um gráfico comparativo alinhado pelo RELÓGIO, mas exibindo em SEGUNDOS RELATIVOS.
+    Gera gráfico comparativo INTERATIVO (Plotly) alinhado pelo RELÓGIO.
     """
     
-    # Função interna auxiliar para garantir a limpeza do tempo
+    # --- 1. LIMPEZA DE TEMPO ---
     def preparar_df_tempo(df_in):
         if df_in is None or df_in.empty or 'CurrentTime' not in df_in.columns:
-            return pd.DataFrame() # Retorna vazio se inválido
-            
+            return pd.DataFrame()
         df_out = df_in.copy()
         
-        # Se a coluna for do tipo objeto (string), forçamos o parser robusto
+        # Parser robusto para lixo no log (Data Hora Epoch)
         if pd.api.types.is_object_dtype(df_out['CurrentTime']):
             def parser_robusto(val):
                 if not isinstance(val, str): return val
-                # split() sem argumentos lida com espaços E tabs (\t) automaticamente
                 parts = val.split()
-                
-                # Caso do log sujo: "2025-11-14 15:42:22.442155 1763145742.442155" (3 partes)
                 if len(parts) >= 3:
-                    # TENTATIVA 1: Epoch (último elemento) - Mais seguro e preciso
                     try:
                         epoch = float(parts[-1])
-                        # Validação simples: Epoch > ano 2000 (946684800)
-                        if epoch > 946684800:
-                            return pd.to_datetime(epoch, unit='s')
+                        if epoch > 946684800: return pd.to_datetime(epoch, unit='s')
                     except: pass
-                    
-                    # TENTATIVA 2: Fallback para Data + Hora (dois primeiros elementos)
-                    # Ex: "2025-11-14 15:42:22.442155"
                     return f"{parts[0]} {parts[1]}"
-                
                 return val
-
-            # Aplica o parser em TODAS as linhas (removemos a verificação de amostra que poderia falhar)
             df_out['CurrentTime'] = df_out['CurrentTime'].apply(parser_robusto)
 
-        # Converte para datetime. Se o parser retornou Timestamp, ele mantém. Se retornou string limpa, ele converte.
         df_out['CurrentTime'] = pd.to_datetime(df_out['CurrentTime'], errors='coerce')
-            
         return df_out.dropna(subset=['CurrentTime'])
 
-    # Aplica a preparação robusta
     d1 = preparar_df_tempo(df1)
     d2 = preparar_df_tempo(df2)
 
-    # Encontra o "Zero Absoluto" (o momento que o PRIMEIRO dos dois testes começou)
     if d1.empty or d2.empty:
-        raise ValueError("Um dos arquivos não possui dados de tempo válidos após o processamento. Verifique se o log contém Data/Hora ou Timestamp legível.")
+        raise ValueError("Dados de tempo inválidos em um dos arquivos.")
         
     min_global = min(d1['CurrentTime'].min(), d2['CurrentTime'].min())
 
-    # Cria coluna de segundos relativos mantendo o offset real
-    # Ex: Se A começou às 10:00:00 (0s) e B às 10:00:05, B começará em 5s.
     d1['RelativeSeconds'] = (d1['CurrentTime'] - min_global).dt.total_seconds()
     d2['RelativeSeconds'] = (d2['CurrentTime'] - min_global).dt.total_seconds()
-
+    
     d1 = d1.sort_values('RelativeSeconds')
     d2 = d2.sort_values('RelativeSeconds')
 
-    fig, ax = plt.subplots(figsize=(12, 6))
-    
-    # Plota usando Segundos no X
-    ax.plot(d1['RelativeSeconds'], d1['CurrentCall'], label=f"{name1}", alpha=0.8, linewidth=2)
-    ax.plot(d2['RelativeSeconds'], d2['CurrentCall'], label=f"{name2}", alpha=0.8, linewidth=2)
-    
-    # Carga Combinada (Soma)
+    # --- 2. PLOTAGEM INTERATIVA ---
+    fig = go.Figure()
+
+    # Carga Combinada (Soma) - Área Sombreada ao Fundo
     try:
-        # Resample precisa de DatetimeIndex
-        ts1 = d1.set_index('CurrentTime')['CurrentCall'].resample('1S').mean().fillna(0)
-        ts2 = d2.set_index('CurrentTime')['CurrentCall'].resample('1S').mean().fillna(0)
-        total_load = ts1.add(ts2, fill_value=0)
+        # Reamostra para 1 segundo. 
+        # IMPORTANTE: Usamos 'ffill' (forward fill) em vez de 'fillna(0)'
+        # Isso garante que se houver um buraco de 1s no log, ele assume o valor anterior
+        # em vez de cair para zero, o que corrige o efeito de "quedas aparentes".
+        ts1 = d1.set_index('CurrentTime')['CurrentCall'].resample('1S').mean()
+        ts2 = d2.set_index('CurrentTime')['CurrentCall'].resample('1S').mean()
         
-        # Converte o índice da soma também para segundos relativos
+        # Preenche lacunas de até 2s com o valor anterior. Só depois põe 0 (se acabou o teste).
+        ts1 = ts1.ffill(limit=2).fillna(0)
+        ts2 = ts2.ffill(limit=2).fillna(0)
+
+        total_load = ts1.add(ts2, fill_value=0)
         total_seconds = (total_load.index - min_global).total_seconds()
         
-        ax.fill_between(total_seconds, total_load.values, color='gray', alpha=0.1, label="Carga Combinada")
+        fig.add_trace(go.Scatter(
+            x=total_seconds, 
+            y=total_load.values,
+            fill='tozeroy', 
+            mode='lines',
+            line=dict(width=0), 
+            name='Carga Combinada (Soma)',
+            fillcolor='rgba(128, 128, 128, 0.5)', 
+            hovertemplate="<b>%{y:.0f}</b> (Soma)<extra></extra>"
+        ))
     except Exception:
         pass
 
-    # Ajustes finais
-    ax.set_title(f"Comparativo Sincronizado (Zero em {min_global.strftime('%H:%M:%S')})")
-    ax.set_ylabel("Chamadas Simultâneas")
-    ax.set_xlabel("Tempo de Execução (segundos)")
-    ax.grid(True, linestyle='--', alpha=0.3)
-    ax.legend()
-    
+    # Linha Arquivo A
+    fig.add_trace(go.Scatter(
+        x=d1['RelativeSeconds'], y=d1['CurrentCall'],
+        mode='lines', name=f"{name1}", line=dict(width=2),
+        hovertemplate="<b>%{y}</b> chamadas<extra></extra>" 
+    ))
+
+    # Linha Arquivo B
+    fig.add_trace(go.Scatter(
+        x=d2['RelativeSeconds'], y=d2['CurrentCall'],
+        mode='lines', name=f"{name2}", line=dict(width=2),
+        hovertemplate="<b>%{y}</b> chamadas<extra></extra>" 
+    ))
+
+    fig.update_layout(
+        title=f"Comparativo Sincronizado (Zero = {min_global.strftime('%H:%M:%S')})",
+        xaxis_title="Tempo de Execução (segundos)",
+        yaxis_title="Chamadas Simultâneas",
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+
+    fig.update_xaxes(hoverformat=".1f") 
+
     return fig
