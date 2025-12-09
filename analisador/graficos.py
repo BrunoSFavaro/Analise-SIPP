@@ -95,26 +95,23 @@ def gerar_grafico(df, config=None):
         secondary_y=True
     )
 
-    # Marcadores Verticais (Pico, Queda, Limite)
-    # Pico (Verde)
+    # Marcadores Verticais
     fig.add_vline(x=pico_idx, line_width=1, line_dash="dash", line_color="green", annotation_text="Pico", annotation_position="top left")
     
-    # Queda (Vermelho)
     if queda_idx:
         fig.add_vline(x=queda_idx, line_width=1, line_dash="dash", line_color="red", annotation_text="Queda", annotation_position="bottom right")
 
-    # Limite Superior (Roxo)
     fig.add_hline(y=LIMITE_SUPERIOR, line_width=1, line_dash="dot", line_color="purple", annotation_text=f"Limite {LIMITE_SUPERIOR}")
 
     # Layout
     fig.update_layout(
         title="Análise SIPp Interativa",
         xaxis_title="Tempo (segundos)",
-        hovermode="x unified", # Tooltip mostra todos os valores daquele segundo juntos
+        hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
     
-    fig.update_xaxes(hoverformat=".1f") # Formata o tempo no tooltip
+    fig.update_xaxes(hoverformat=".1f") 
     fig.update_yaxes(title_text="Volume (Chamadas/Taxa)", secondary_y=False)
     fig.update_yaxes(title_text="Total Falhas", secondary_y=True)
 
@@ -122,7 +119,7 @@ def gerar_grafico(df, config=None):
 
 def plotar_comparacao(df1, name1, df2, name2):
     """
-    Gera gráfico comparativo INTERATIVO (Plotly) alinhado pelo RELÓGIO.
+    Gera gráfico comparativo INTERATIVO (Plotly) alinhado pelo RELÓGIO (GMT-3).
     """
     
     # --- 1. LIMPEZA DE TEMPO ---
@@ -139,7 +136,9 @@ def plotar_comparacao(df1, name1, df2, name2):
                 if len(parts) >= 3:
                     try:
                         epoch = float(parts[-1])
-                        if epoch > 946684800: return pd.to_datetime(epoch, unit='s')
+                        if epoch > 946684800: 
+                            # Correção GMT-3 aqui também
+                            return pd.to_datetime(epoch, unit='s') - pd.Timedelta(hours=3)
                     except: pass
                     return f"{parts[0]} {parts[1]}"
                 return val
@@ -167,14 +166,10 @@ def plotar_comparacao(df1, name1, df2, name2):
 
     # Carga Combinada (Soma) - Área Sombreada ao Fundo
     try:
-        # Reamostra para 1 segundo. 
-        # IMPORTANTE: Usamos 'ffill' (forward fill) em vez de 'fillna(0)'
-        # Isso garante que se houver um buraco de 1s no log, ele assume o valor anterior
-        # em vez de cair para zero, o que corrige o efeito de "quedas aparentes".
         ts1 = d1.set_index('CurrentTime')['CurrentCall'].resample('1S').mean()
         ts2 = d2.set_index('CurrentTime')['CurrentCall'].resample('1S').mean()
         
-        # Preenche lacunas de até 2s com o valor anterior. Só depois põe 0 (se acabou o teste).
+        # FFILL para evitar quedas artificiais
         ts1 = ts1.ffill(limit=2).fillna(0)
         ts2 = ts2.ffill(limit=2).fillna(0)
 

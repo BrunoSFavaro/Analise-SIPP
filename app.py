@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Analisador SIPp — Multi-Agent Support")
+st.title("Analisador SIPp")
 
 # --- CONSTANTES E SETUP ---
 AMBIENTES_DIR = "ambientes"

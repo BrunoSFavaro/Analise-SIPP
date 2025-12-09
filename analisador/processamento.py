@@ -1,4 +1,5 @@
 import pandas as pd
+import streamlit as st
 
 def processar_csv(caminho_ou_obj, config):
     """
@@ -14,24 +15,24 @@ def processar_csv(caminho_ou_obj, config):
 
     df.columns = [c.strip() for c in df.columns]
 
-    # --- TRATAMENTO HÍBRIDO DE TEMPO ---
-    # Prioriza o Epoch (último valor) se existir, senão tenta ler a data textual
+    # --- TRATAMENTO HÍBRIDO DE TEMPO (COM CORREÇÃO GMT-3) ---
     if 'CurrentTime' in df.columns:
         def extrair_data_hibrida(val):
             if not isinstance(val, str): return val
             partes = val.split()
             
-            # 1. Tenta Epoch (último elemento) - Mais robusto
+            # 1. Tenta Epoch (último elemento) - Prioridade Ouro
             if len(partes) >= 1:
                 try:
                     epoch = float(partes[-1])
-                    # Epochs válidos recentes são > 946684800 (ano 2000)
                     if epoch > 946684800:
-                        return pd.to_datetime(epoch, unit='s')
+                        # Converte UTC e subtrai 3 horas para Brasil (GMT-3)
+                        return pd.to_datetime(epoch, unit='s') - pd.Timedelta(hours=3)
                 except ValueError:
                     pass
 
-            # 2. Fallback para Texto (Data + Hora)
+            # 2. Fallback para Texto (Data + Hora originais do log)
+            # Se o Epoch falhar, usamos o texto que já deve estar no horário local
             if len(partes) >= 2:
                 return f"{partes[0]} {partes[1]}"
             return val
