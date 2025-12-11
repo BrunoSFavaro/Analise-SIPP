@@ -166,12 +166,12 @@ def plotar_comparacao(df1, name1, df2, name2):
 
     # Carga Combinada (Soma) - Área Sombreada ao Fundo
     try:
-        ts1 = d1.set_index('CurrentTime')['CurrentCall'].resample('1S').mean()
-        ts2 = d2.set_index('CurrentTime')['CurrentCall'].resample('1S').mean()
+        ts1 = d1.set_index('CurrentTime')['CurrentCall'].resample('1s').mean()
+        ts2 = d2.set_index('CurrentTime')['CurrentCall'].resample('1s').mean()
         
         # FFILL para evitar quedas artificiais
-        ts1 = ts1.ffill(limit=2).fillna(0)
-        ts2 = ts2.ffill(limit=2).fillna(0)
+        ts1 = ts1.ffill(limit=1).fillna(0)
+        ts2 = ts2.ffill(limit=1).fillna(0)
 
         total_load = ts1.add(ts2, fill_value=0)
         total_seconds = (total_load.index - min_global).total_seconds()

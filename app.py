@@ -127,7 +127,7 @@ if modo_operacao == "Individual":
                 st.warning(f"⚠️ Atenção: {stats['total_falhas']} falhas detectadas.")
             
             # --- MUDANÇA PARA PLOTLY ---
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
         except Exception as e:
             st.error(f"Erro ao processar: {e}")
@@ -185,7 +185,7 @@ else:
             fig_comp = plotar_comparacao(df_a, f_a.name, df_b, f_b.name)
             
             # --- MUDANÇA PARA PLOTLY ---
-            st.plotly_chart(fig_comp, use_container_width=True)
+            st.plotly_chart(fig_comp, width='stretch')
             
             st.divider()
             col_a, col_b = st.columns(2)

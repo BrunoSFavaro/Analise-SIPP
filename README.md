@@ -9,7 +9,7 @@ Aplicação em **Streamlit** para análise automática de logs gerados em testes
 
 ---
 
-## 🧠 Como funciona
+## Como funciona
 
 1. O usuário seleciona o **ambiente de teste**.
 2. A aplicação carrega automaticamente o arquivo de configuração JSON correspondente.
@@ -46,7 +46,7 @@ Aplicação em **Streamlit** para análise automática de logs gerados em testes
 
 ---
 
-## ⚙️ Configuração (JSON)
+## Configuração (JSON)
 
 Cada ambiente possui um arquivo `.json` que dita as regras de análise:
 
@@ -67,7 +67,7 @@ Cada ambiente possui um arquivo `.json` que dita as regras de análise:
 
 ---
 
-## 📊 Métricas Calculadas
+## Métricas Calculadas
 
 A ferramenta processa o CSV e exibe as seguintes informações no relatório:
 
@@ -75,9 +75,9 @@ A ferramenta processa o CSV e exibe as seguintes informações no relatório:
 | :--- | :--- |
 | 🔹 **Pico de Chamadas** | Valor máximo de chamadas simultâneas sustentado. |
 | 🔹 **Média de Chamadas** | Média calculada desconsiderando *ramp-up* e *ramp-down*. |
-| 🚀 **CallRate Máxima** | Maior taxa de chamadas (CPS) registrada. |
-| 📈 **CallRate Média** | Ritmo médio de chamadas ao longo do teste. |
-| ❌ **Falhas Acumuladas** | Total de chamadas falhadas detectadas na execução. |
+| 🔹 **CallRate Máxima** | Maior taxa de chamadas (CPS) registrada. |
+| 🔹 **CallRate Média** | Ritmo médio de chamadas ao longo do teste. |
+| 🔹 **Falhas Acumuladas** | Total de chamadas falhadas detectadas na execução. |
 
 Além disso, é gerado um gráfico de evolução comparando:
 * `CurrentCall`
