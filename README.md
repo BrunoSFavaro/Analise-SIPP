@@ -88,13 +88,34 @@ Além disso, é gerado um gráfico de evolução comparando:
 
 ## ▶️ Como Executar
 
-1. **Instale as dependências:**
+1. **Clone o repositório** 
+```bash
+git clone https://github.com/BrunoSFavaro/Analise-SIPP.git
+```
+
+2. **Acesse o diretório do projeto**
+```bash
+cd Analise-SIPP
+```
+
+3. **Crie um ambiente virtual**
+
+```bash
+python -m venv .venv
+```
+
+4. **Ative o ambiente virtual**
+```bash
+.venv\Scripts\activate.bat
+```
+
+5. **Instale as dependências:**
 
 ```bash
 pip install -r requirements.txt
 ```
 
-2. **Execute a aplicação:**
+6. **Execute a aplicação:**
 
 ```bash
 python -m streamlit run app.py
