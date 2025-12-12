@@ -96,7 +96,7 @@ if modo_operacao == "Individual":
         
         msg_status = "⚠️ Ambiente não detectado."
         if config_path:
-             msg_status = f"✅ Sugerido: **{ambientes[idx_padrao][0]}**"
+             msg_status = f"Sugerido: **{ambientes[idx_padrao][0]}**"
         
         with st.sidebar:
             st.markdown(msg_status)
